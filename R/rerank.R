@@ -101,46 +101,47 @@ rerank.netcdf.wrapper <- function(qdm.file, obs.file, analogues, out.file, varna
         print(paste("Applying analogues to timesteps", i_0, "-", i_n, "/", nt))
         var.ca <- mapply( #JF: 
             function(ti, wi) {
-                apply.analogues.netcdf(ti, wi, obs.nc, varname)#JF: 
+                apply.analogues.netcdf(ti, wi, obs.nc, varname)#JF: I think this basically gets the climate analogs output (e.g. daily, high res, developed via BCCA approach)
             },
             analogues$indices[i_0:i_n],
             analogues$weights[i_0:i_n]
         )
-        var.ca <- positive_pr(var.ca, varname) #JF: var.ca is a field of actual states (e.g. tasmax, tasmin, pr), from the CA analysis
+        var.ca <- positive_pr(var.ca, varname) #JF: var.ca is a field of actual states (e.g. tasmax, tasmin, pr), from the CA analysis.  So it seems like these are created here instead of being loaded in from argument line.
         by.month <- rep(month.factor, each=ncells)
 
-        dqm <- foreach(
-            ca=split(var.ca, by.month),
-            qdm=split(var.qdm, by.month),
-            .multicombine=TRUE,
-            .inorder=TRUE,
-            .final=function(x) {
+        dqm <- foreach( #new dqm (i.e. final BCCAQ result) produced here
+          #JF: lack of .combine argument: the default behaviour (results returned in a list) is applied
+            ca=split(var.ca, by.month), #JF: ca == BCCA results (from above, split into months), prior to passing into %dopar%
+            qdm=split(var.qdm, by.month), #JF: dqm == QDM results (loaded in from input argument line), prior to passing into %dopar%
+            .multicombine=TRUE, #defines whether .combine can take more than one argument
+            .inorder=TRUE, #keeps output in same dimensional (?) order(s) as the input
+            .final=function(x) { #JF: function that is used to return the results of the foreach call.  In this case, re-concatenates monthly data.
                 array(
                     unsplit(x, by.month),
                     dim=c(nlon, nlat, ni)
                 )
-            }) %dopar% {
+            }) %dopar% { #JF: evaluation environment
                 ca <- jitter(ca, 0.01)
-                ndays <- length(ca) / ncells
+                ndays <- length(ca) / ncells #
                 by.cell <- rep(1:ncells, times=ndays)
                 ca <- split(ca, by.cell)
-                ranks <- lapply(ca, rank, ties.method='average')
-                ## Reorder the days of qdm on cell at a time
-                array(
-                    unsplit(
-                        mapply(
-                            reorder,
-                            split(qdm, by.cell),
-                            ranks,
+                ranks <- lapply(ca, rank, ties.method='average') #ranks ca fields, by month, based on the value of the ca variable values themselves, for each grid cell, and within each month
+                ## Reorder the days of qdm on cell at a time #JF: the results of this array operation are assigned to dqm.  So, this is the main operator in the evaluation environment.
+                array(#JF: assigns results of interior arguments to an array
+                    unsplit(#JF: inverse of following split up by grid cell
+                        mapply(#JF: apply the interior arguments element by element
+                            reorder,#Reorder the BCCI data...
+                            split(qdm, by.cell), (#JF: do operation split by grid cell)
+                            ranks,#JF...according to the rank determined for the BCCA data.  Does this assume that a similar temporal structure exists in both the QDM and CA datasets at a given point?  So it jitters the QDM results so that 
                             SIMPLIFY=F
                         ),
                         by.cell
                     ),
-                    dim=c(nlon, nlat, ndays)
+                    dim=c(nlon, nlat, ndays) #dimension argument for 'array' function call
                 )
             }
         print(paste("Writing steps", i_0, "-", i_n, "/", nt, "to file", out.file))
-        ncvar_put(nc=out.nc, varid=varname, vals=dqm,
+        ncvar_put(nc=out.nc, varid=varname, vals=dqm, #BCCAQ result written to file.
                   start=c(1, 1, i_0), count=c(-1, -1, ni))
         rm(var.qdm, var.ca, dqm)
         gc()
