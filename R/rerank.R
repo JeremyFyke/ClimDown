@@ -85,28 +85,28 @@ rerank.netcdf.wrapper <- function(qdm.file, obs.file, analogues, out.file, varna
         function(x) {c('start'=min(x), 'stop'=max(x), 'length'=length(x))}
     )
 
-    for (index in indices) {
-        i_0 <- index['start']
-        i_n <- index['stop']
-        ni <- index['length']
+    for (index in indices) { #JF: Run over chunks
+        i_0 <- index['start'] #JF: chunk indices
+        i_n <- index['stop'] #JF: chunk indices
+        ni <- index['length'] #JF: chunk indices
 
         print(paste("Processing steps", i_0, "-", i_n, "/", nt))
 
         # Read all space for the time chunk
         var.qdm <- ncvar_get(qdm.nc, varid=varname, start=c(1,1,i_0), count=c(nlon,nlat,ni))
 
-        date.sub <- qdm.time$vals[i_0:i_n]
-        month.factor <- as.factor(format(date.sub, '%Y-%m'))
+        date.sub <- qdm.time$vals[i_0:i_n] #JF: chunk dates
+        month.factor <- as.factor(format(date.sub, '%Y-%m')) #JF: chunk dates
 
         print(paste("Applying analogues to timesteps", i_0, "-", i_n, "/", nt))
-        var.ca <- mapply(
+        var.ca <- mapply( #JF: 
             function(ti, wi) {
-                apply.analogues.netcdf(ti, wi, obs.nc, varname)
+                apply.analogues.netcdf(ti, wi, obs.nc, varname)#JF: 
             },
             analogues$indices[i_0:i_n],
             analogues$weights[i_0:i_n]
         )
-        var.ca <- positive_pr(var.ca, varname)
+        var.ca <- positive_pr(var.ca, varname) #JF: var.ca is a field of actual states (e.g. tasmax, tasmin, pr), from the CA analysis
         by.month <- rep(month.factor, each=ncells)
 
         dqm <- foreach(
