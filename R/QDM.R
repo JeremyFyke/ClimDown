@@ -37,14 +37,22 @@ QDM <- function(o.c, m.c, m.p, ratio=TRUE, trace=0.05, jitter.factor=0.01,
     n <- max(length(o.c), length(m.c), length(m.p))
     if(is.null(n.tau)) n.tau <- n
     tau <- seq(1/(n+1), n/(n+1), length=n.tau)
-    quant.o.c <- quantile(o.c, tau, type=6, na.rm=TRUE)
+    quant.o.c <- quantile(o.c, tau, type=6, na.rm=TRUE) #Jer: determines quantile levels
     quant.m.c <- quantile(m.c, tau, type=6, na.rm=TRUE)
     quant.m.p <- quantile(m.p, tau, type=6, na.rm=TRUE)
     # Apply QDM bias correction
+  
+#Jer: for each input model daily projection value (1:t=t_end), this determines where it sits in model projection quantile space, between 0-1.  Fractional quantile space.  
     tau.m.p <- approx(quant.m.p, tau, m.p, rule=2)$y    
     if(ratio){
-        delta.m <- m.p/approx(tau, quant.m.c, tau.m.p, rule=2)$y
-        mhat.p <- approx(tau, quant.o.c, tau.m.p, rule=2)$y*delta.m
+#Jer: scalefac is the observed-period quantile value that corresponds to future-period quantile value, for similar (fractional) quantiles.  One scalefac per daily timestep ( (1:t=t_end))
+        scalefac = approx(tau, quant.m.c, tau.m.p, rule=2)$y
+#Jer: a quantile-based (+/*) delta between future and observed conditions is determined (1:t=t_end)
+        delta.m <- m.p/scalefac
+#Jer: values of present day observations are determined for quantile points corresponding to data from each future time (1:t=t_end)
+        tmp = approx(tau, quant.o.c, tau.m.p, rule=2)$y
+#Jer: these estimates of present-day conditions at specific quantile points are then scaled by the scale factor between present and future conditions, at these same quantile points
+        mhat.p <- tmp*delta.m
     } else{
         delta.m <- m.p - approx(tau, quant.m.c, tau.m.p, rule=2)$y
         mhat.p <- approx(tau, quant.o.c, tau.m.p, rule=2)$y + delta.m
